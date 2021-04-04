@@ -1,0 +1,9 @@
+{
+  "files.associations": {
+    "stm32g4xx_hal.h": "c",
+    "stm32g4xx_ll_dac.h": "c",
+    "stm32g4xx_ll_dma.h": "c",
+    "stm32g4xx_ll_tim.h": "c",
+    "font8x8_basic.h": "c"
+  }
+}
