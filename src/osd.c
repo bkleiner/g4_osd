@@ -12,6 +12,7 @@
 #include <stm32g4xx_ll_tim.h>
 
 #include "clock.h"
+#include "video.h"
 
 #include "font8x8_basic.h"
 #include "tileset.h"
@@ -165,37 +166,7 @@ void osd_update() {
   }
 }
 
-typedef enum {
-  FIELD_START_BROAD,
-  FIELD_START_SHORT,
-  FIELD_LINES,
-  FIELD_END_SHORT
-} video_state_t;
-
 static video_state_t video_state = FIELD_START_BROAD;
-
-uint32_t ticks() {
-  static uint32_t total_ticks = 0;
-  static uint32_t last_ticks = 0;
-
-  const uint32_t ticks = DWT->CYCCNT;
-  if (ticks >= last_ticks) {
-    total_ticks += ticks - last_ticks;
-  } else {
-    total_ticks += (UINT32_MAX + ticks) - last_ticks;
-  }
-
-  last_ticks = ticks;
-  return total_ticks;
-}
-
-void delay_ticks(uint32_t ticks) {
-  volatile uint32_t delay = ticks;
-  volatile uint32_t start = DWT->CYCCNT;
-  while (DWT->CYCCNT - start < delay) {
-    __asm("NOP");
-  }
-}
 
 void COMP1_2_3_IRQHandler(void) {
   if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_21) != RESET) {

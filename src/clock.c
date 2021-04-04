@@ -87,6 +87,21 @@ uint32_t millis() {
   return total_millis;
 }
 
+uint32_t ticks() {
+  static uint32_t total_ticks = 0;
+  static uint32_t last_ticks = 0;
+
+  const uint32_t ticks = DWT->CYCCNT;
+  if (ticks >= last_ticks) {
+    total_ticks += ticks - last_ticks;
+  } else {
+    total_ticks += (UINT32_MAX + ticks) - last_ticks;
+  }
+
+  last_ticks = ticks;
+  return total_ticks;
+}
+
 void delay_us(uint32_t us) {
   volatile uint32_t delay = us * (SystemCoreClock / 1000000L);
   volatile uint32_t start = DWT->CYCCNT;
@@ -97,4 +112,12 @@ void delay_us(uint32_t us) {
 
 void delay_ms(uint32_t ms) {
   delay_us(ms * 1000);
+}
+
+void delay_ticks(uint32_t ticks) {
+  volatile uint32_t delay = ticks;
+  volatile uint32_t start = DWT->CYCCNT;
+  while (DWT->CYCCNT - start < delay) {
+    __asm("NOP");
+  }
 }
