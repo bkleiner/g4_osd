@@ -17,6 +17,9 @@
 
 static osd_timer_state_t video_state = FIELD_START_BROAD;
 static volatile uint32_t line_counter = 0;
+uint16_t sync_level = 0;
+
+extern volatile uint8_t video_ouput_active;
 
 static void dac_init() {
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_DAC1);
@@ -46,7 +49,7 @@ static void dac_init() {
 
 static void comp_init() {
   LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_1;
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_7;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -57,22 +60,22 @@ static void comp_init() {
   comp_init.InputHysteresis = LL_COMP_HYSTERESIS_50MV;
   comp_init.OutputPolarity = LL_COMP_OUTPUTPOL_NONINVERTED;
   comp_init.OutputBlankingSource = LL_COMP_BLANKINGSRC_NONE;
-  LL_COMP_Init(COMP1, &comp_init);
+  LL_COMP_Init(COMP2, &comp_init);
 
   __IO uint32_t wait_loop_index_stab = ((LL_COMP_DELAY_VOLTAGE_SCALER_STAB_US * (SystemCoreClock / (100000 * 2))) / 10);
   while (wait_loop_index_stab != 0) {
     wait_loop_index_stab--;
   }
 
-  LL_EXTI_EnableFallingTrig_0_31(LL_EXTI_LINE_21);
-  LL_EXTI_EnableRisingTrig_0_31(LL_EXTI_LINE_21);
-  LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_21);
+  LL_EXTI_EnableFallingTrig_0_31(LL_EXTI_LINE_22);
+  LL_EXTI_EnableRisingTrig_0_31(LL_EXTI_LINE_22);
+  LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_22);
 
-  LL_EXTI_DisableEvent_0_31(LL_EXTI_LINE_21);
+  LL_EXTI_DisableEvent_0_31(LL_EXTI_LINE_22);
 
-  LL_EXTI_EnableIT_0_31(LL_EXTI_LINE_21);
+  LL_EXTI_EnableIT_0_31(LL_EXTI_LINE_22);
 
-  LL_COMP_Enable(COMP1);
+  LL_COMP_Enable(COMP2);
 
   __IO uint32_t wait_loop_index_start = ((LL_COMP_DELAY_STARTUP_US * (SystemCoreClock / (100000 * 2))) / 10);
   while (wait_loop_index_start != 0) {
@@ -80,7 +83,7 @@ static void comp_init() {
   }
 }
 
-static void sync_level_update(uint32_t mv) {
+void sync_level_update(uint32_t mv) {
   const uint32_t level = (mv * 0x0FFF) / (3.3 * 1000);
 
   LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_2, level);
@@ -91,7 +94,6 @@ static void comp_detect() {
   delay_ms(50);
 
   uint16_t min_level = 0;
-  uint16_t sync_level = 0;
 
   for (uint16_t mv = 0; mv < 700; mv += 5) {
     sync_level_update(mv);
@@ -104,8 +106,8 @@ static void comp_detect() {
     // pal has 15625 lines per second = ~6.4ms per 100 lines
     // credits to fishpepper for coming up with this method
     while ((DWT->CYCCNT - start) < TICKS(6000, 0)) {
-      if (LL_COMP_ReadOutputLevel(COMP1) == LL_COMP_OUTPUT_LEVEL_LOW) {
-        while (LL_COMP_ReadOutputLevel(COMP1) == LL_COMP_OUTPUT_LEVEL_LOW && (DWT->CYCCNT - start) < TICKS(6000, 0))
+      if (LL_COMP_ReadOutputLevel(COMP2) == LL_COMP_OUTPUT_LEVEL_LOW) {
+        while (LL_COMP_ReadOutputLevel(COMP2) == LL_COMP_OUTPUT_LEVEL_LOW && (DWT->CYCCNT - start) < TICKS(6000, 0))
           ;
 
         line_counter++;
@@ -117,7 +119,7 @@ static void comp_detect() {
       // take this as min level
       min_level = mv;
     } else if (line_counter > 120) {
-      sync_level = min_level + 0.4 * (mv - min_level);
+      sync_level = min_level + 0.6 * (mv - min_level);
       break;
     }
   }
@@ -140,18 +142,25 @@ void osd_timer_init() {
   comp_detect();
 }
 
+#pragma GCC push_options
+#pragma GCC optimize("O3")
+
 void COMP1_2_3_IRQHandler(void) {
   volatile uint32_t now = DWT->CYCCNT;
 
-  if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_21) == RESET) {
+  if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_22) == RESET) {
     return;
   }
-  LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_21);
+  LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_22);
 
   static volatile uint32_t sync_start = 0;
   static volatile uint8_t did_process = 0;
 
-  if (LL_COMP_ReadOutputLevel(COMP1) == LL_COMP_OUTPUT_LEVEL_LOW) {
+  if (video_ouput_active) {
+    return;
+  }
+
+  if (LL_COMP_ReadOutputLevel(COMP2) == LL_COMP_OUTPUT_LEVEL_LOW) {
     // LOW == SYNC
     sync_start = now;
     did_process = 0;
@@ -169,6 +178,7 @@ void COMP1_2_3_IRQHandler(void) {
     return;
   }
 
+  LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_10);
   LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_9);
 
   static uint32_t broad_counter = 0;
@@ -214,6 +224,7 @@ void COMP1_2_3_IRQHandler(void) {
     if ((now - sync_start) > TICKS(3, 100)) {
       if (line_counter >= LINE_MIN && line_counter < LINE_MAX) {
         osd_video_fire(line_counter - LINE_MIN);
+        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_10);
       }
 
       line_counter += 2;
@@ -242,3 +253,5 @@ void COMP1_2_3_IRQHandler(void) {
     break;
   }
 }
+
+#pragma GCC pop_options

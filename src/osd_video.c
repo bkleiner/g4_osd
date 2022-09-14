@@ -16,7 +16,16 @@ static volatile uint32_t line_buffer[2][LINE_BUFFER_SIZE];
 static volatile uint8_t fill_request = 0;
 static volatile uint32_t line;
 
+volatile uint8_t video_ouput_active = 0;
+
 extern uint8_t screen_buffer[SCREEN_BUFFER_SIZE];
+
+void black_level_update(uint32_t mv) {
+  const uint32_t level = (mv * 0x0FFF) / (3.3 * 1000);
+
+  LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, level);
+  LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_1);
+}
 
 static void dac_init() {
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_DAC1);
@@ -48,7 +57,7 @@ static void dac_init() {
   }
 
   LL_DAC_EnableTrigger(DAC1, LL_DAC_CHANNEL_1);
-  LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, 500);
+  LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, 900);
   LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_1);
 }
 
@@ -120,7 +129,6 @@ void osd_video_init() {
 void osd_video_update() {
   if (fill_request) {
 
-    LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_10);
     const uint32_t line_index = line / CHARCTER_HEIGHT;
     const uint32_t line_row = (line % CHARCTER_HEIGHT);
 
@@ -142,13 +150,10 @@ void osd_video_update() {
       }
     }
     line_buffer[line_buffer_index][LINE_BUFFER_SIZE - 1] = (LL_GPIO_PIN_7 << 16) | (LL_GPIO_PIN_5 << 16);
-    LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_10);
 
     fill_request = 0;
   }
 }
-
-#pragma GCC pop_options
 
 void osd_video_fire(const uint32_t current_line) {
   LL_TIM_DisableCounter(TIM1);
@@ -157,10 +162,12 @@ void osd_video_fire(const uint32_t current_line) {
   LL_TIM_EnableDMAReq_CC1(TIM1);
   LL_TIM_EnableCounter(TIM1);
 
+  video_ouput_active = 1;
   line_buffer_index = !line_buffer_index;
   line = current_line;
   fill_request = 1;
 }
+#pragma GCC pop_options
 
 void DMA1_Channel3_IRQHandler() {
   if (LL_DMA_IsActiveFlag_TC3(DMA1)) {
@@ -172,5 +179,7 @@ void DMA1_Channel3_IRQHandler() {
     LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_3, (uint32_t)&line_buffer[line_buffer_index]);
     LL_DMA_SetPeriphAddress(DMA1, LL_DMA_CHANNEL_3, (uint32_t)&GPIOB->BSRR);
     LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_3, LINE_BUFFER_SIZE);
+
+    video_ouput_active = 0;
   }
 }
