@@ -21,6 +21,5 @@ int main() {
 
   while (1) {
     osd_update();
-    delay_ms(300);
   }
 }

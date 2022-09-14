@@ -6,6 +6,8 @@
     "stm32g4xx_ll_tim.h": "c",
     "font8x8_basic.h": "c",
     "stm32g4xx_ll_usart.h": "c",
-    "stm32g4xx_ll_i2c.h": "c"
+    "stm32g4xx_ll_i2c.h": "c",
+    "stm32g4xx_ll_gpio.h": "c",
+    "video.h": "c"
   }
 }
