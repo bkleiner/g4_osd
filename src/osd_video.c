@@ -8,7 +8,7 @@
 
 #include "font.h"
 
-#define TIMER_RELOAD 22
+#define TIMER_RELOAD 25
 
 static volatile uint8_t line_buffer_index = 0;
 static volatile uint32_t line_buffer[2][LINE_BUFFER_SIZE];
@@ -20,14 +20,7 @@ volatile uint8_t video_ouput_active = 0;
 
 extern uint8_t screen_buffer[SCREEN_BUFFER_SIZE];
 
-void black_level_update(uint32_t mv) {
-  const uint32_t level = (mv * 0x0FFF) / (3.3 * 1000);
-
-  LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, level);
-  LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_1);
-}
-
-static void dac_init() {
+static void black_level_dac_init() {
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_DAC1);
 
   LL_DAC_SetSignedFormat(DAC1, LL_DAC_CHANNEL_1, LL_DAC_SIGNED_FORMAT_DISABLE);
@@ -59,6 +52,54 @@ static void dac_init() {
   LL_DAC_EnableTrigger(DAC1, LL_DAC_CHANNEL_1);
   LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, 900);
   LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_1);
+}
+
+void black_level_update(uint32_t mv) {
+  const uint32_t level = (mv * 0x0FFF) / (3.3 * 1000);
+
+  LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, level);
+  LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_1);
+}
+
+static void white_level_dac_init() {
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_DAC1);
+
+  LL_DAC_SetSignedFormat(DAC1, LL_DAC_CHANNEL_2, LL_DAC_SIGNED_FORMAT_DISABLE);
+
+  LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_5;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  LL_DAC_InitTypeDef dac_init = {0};
+  dac_init.TriggerSource = LL_DAC_TRIG_SOFTWARE;
+  dac_init.TriggerSource2 = LL_DAC_TRIG_SOFTWARE;
+  dac_init.WaveAutoGeneration = LL_DAC_WAVE_AUTO_GENERATION_NONE;
+  dac_init.OutputBuffer = LL_DAC_OUTPUT_BUFFER_ENABLE;
+  dac_init.OutputConnection = LL_DAC_OUTPUT_CONNECT_GPIO;
+  dac_init.OutputMode = LL_DAC_OUTPUT_MODE_NORMAL;
+  LL_DAC_Init(DAC1, LL_DAC_CHANNEL_2, &dac_init);
+  LL_DAC_DisableTrigger(DAC1, LL_DAC_CHANNEL_2);
+  LL_DAC_DisableDMADoubleDataMode(DAC1, LL_DAC_CHANNEL_2);
+
+  LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_2);
+
+  __IO uint32_t wait_loop_index = ((LL_DAC_DELAY_STARTUP_VOLTAGE_SETTLING_US * (SystemCoreClock / (100000 * 2))) / 10);
+  while (wait_loop_index != 0) {
+    wait_loop_index--;
+  }
+
+  LL_DAC_EnableTrigger(DAC1, LL_DAC_CHANNEL_2);
+  LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_2, 900);
+  LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_2);
+}
+
+void white_level_update(uint32_t mv) {
+  const uint32_t level = (mv * 0x0FFF) / (3.3 * 1000);
+
+  LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_2, level);
+  LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_2);
 }
 
 static void bitbang_init() {
@@ -119,7 +160,9 @@ static void bitbang_init() {
 }
 
 void osd_video_init() {
-  dac_init();
+  black_level_dac_init();
+  white_level_dac_init();
+
   bitbang_init();
 }
 
@@ -128,6 +171,7 @@ void osd_video_init() {
 
 void osd_video_update() {
   if (fill_request) {
+    LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_10);
 
     const uint32_t line_index = line / CHARCTER_HEIGHT;
     const uint32_t line_row = (line % CHARCTER_HEIGHT);
@@ -151,20 +195,22 @@ void osd_video_update() {
     }
     line_buffer[line_buffer_index][LINE_BUFFER_SIZE - 1] = (LL_GPIO_PIN_7 << 16) | (LL_GPIO_PIN_5 << 16);
 
+    LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_10);
+
     fill_request = 0;
   }
 }
 
 void osd_video_fire(const uint32_t current_line) {
   LL_TIM_DisableCounter(TIM1);
-  LL_TIM_SetCounter(TIM1, 0xFFFF - 29 * TIMER_RELOAD);
+  LL_TIM_SetCounter(TIM1, 0xFFFF - 15 * TIMER_RELOAD);
   LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_3);
   LL_TIM_EnableDMAReq_CC1(TIM1);
   LL_TIM_EnableCounter(TIM1);
 
   video_ouput_active = 1;
   line_buffer_index = !line_buffer_index;
-  line = current_line;
+  line = current_line / 2;
   fill_request = 1;
 }
 #pragma GCC pop_options

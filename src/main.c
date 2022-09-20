@@ -90,6 +90,7 @@ void uart_printf(const char *fmt, ...) {
 extern uint16_t sync_level;
 extern void sync_level_update(uint32_t mv);
 extern void black_level_update(uint32_t mv);
+extern void white_level_update(uint32_t mv);
 
 void uart_update() {
   uint8_t cmd = 0;
@@ -99,7 +100,8 @@ void uart_update() {
 
   uart_printf("%c\r\n", cmd);
 
-  static uint32_t level = 0;
+  static uint32_t black_level = 900;
+  static uint32_t white_level = 900;
 
   switch (cmd) {
   case 'w':
@@ -117,17 +119,35 @@ void uart_update() {
     break;
 
   case 'e':
-    level += 1;
-    black_level_update(level);
-    uart_printf("%d\r\n", level);
+    if (black_level < 0xFFF) {
+      black_level += 50;
+      black_level_update(black_level);
+    }
+    uart_printf("%d\r\n", black_level);
     break;
 
   case 'd':
-    if (level >= 1) {
-      level -= 1;
-      black_level_update(level);
+    if (black_level > 0) {
+      black_level -= 50;
+      black_level_update(black_level);
     }
-    uart_printf("%d\r\n", level);
+    uart_printf("%d\r\n", black_level);
+    break;
+
+  case 'r':
+    if (white_level < 0xFFF) {
+      white_level += 50;
+      white_level_update(white_level);
+    }
+    uart_printf("%d\r\n", white_level);
+    break;
+
+  case 'f':
+    if (white_level > 0) {
+      white_level -= 50;
+      white_level_update(white_level);
+    }
+    uart_printf("%d\r\n", white_level);
     break;
 
   default:

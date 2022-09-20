@@ -22,9 +22,9 @@ uint16_t sync_level = 0;
 extern volatile uint8_t video_ouput_active;
 
 static void dac_init() {
-  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_DAC1);
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_DAC3);
 
-  LL_DAC_SetSignedFormat(DAC1, LL_DAC_CHANNEL_2, LL_DAC_SIGNED_FORMAT_DISABLE);
+  LL_DAC_SetSignedFormat(DAC3, LL_DAC_CHANNEL_1, LL_DAC_SIGNED_FORMAT_DISABLE);
 
   LL_DAC_InitTypeDef dac_init = {0};
   dac_init.TriggerSource = LL_DAC_TRIG_SOFTWARE;
@@ -33,18 +33,18 @@ static void dac_init() {
   dac_init.OutputBuffer = LL_DAC_OUTPUT_BUFFER_ENABLE;
   dac_init.OutputConnection = LL_DAC_OUTPUT_CONNECT_INTERNAL;
   dac_init.OutputMode = LL_DAC_OUTPUT_MODE_NORMAL;
-  LL_DAC_Init(DAC1, LL_DAC_CHANNEL_2, &dac_init);
-  LL_DAC_DisableTrigger(DAC1, LL_DAC_CHANNEL_2);
-  LL_DAC_DisableDMADoubleDataMode(DAC1, LL_DAC_CHANNEL_2);
+  LL_DAC_Init(DAC3, LL_DAC_CHANNEL_1, &dac_init);
+  LL_DAC_DisableTrigger(DAC3, LL_DAC_CHANNEL_1);
+  LL_DAC_DisableDMADoubleDataMode(DAC3, LL_DAC_CHANNEL_1);
 
-  LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_2);
+  LL_DAC_Enable(DAC3, LL_DAC_CHANNEL_1);
 
   __IO uint32_t wait_loop_index = ((LL_DAC_DELAY_STARTUP_VOLTAGE_SETTLING_US * (SystemCoreClock / (100000 * 2))) / 10);
   while (wait_loop_index != 0) {
     wait_loop_index--;
   }
 
-  LL_DAC_EnableTrigger(DAC1, LL_DAC_CHANNEL_2);
+  LL_DAC_EnableTrigger(DAC3, LL_DAC_CHANNEL_1);
 }
 
 static void comp_init() {
@@ -56,7 +56,7 @@ static void comp_init() {
 
   LL_COMP_InitTypeDef comp_init = {};
   comp_init.InputPlus = LL_COMP_INPUT_PLUS_IO1;
-  comp_init.InputMinus = LL_COMP_INPUT_MINUS_DAC1_CH2;
+  comp_init.InputMinus = LL_COMP_INPUT_MINUS_DAC3_CH1;
   comp_init.InputHysteresis = LL_COMP_HYSTERESIS_50MV;
   comp_init.OutputPolarity = LL_COMP_OUTPUTPOL_NONINVERTED;
   comp_init.OutputBlankingSource = LL_COMP_BLANKINGSRC_NONE;
@@ -86,8 +86,8 @@ static void comp_init() {
 void sync_level_update(uint32_t mv) {
   const uint32_t level = (mv * 0x0FFF) / (3.3 * 1000);
 
-  LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_2, level);
-  LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_2);
+  LL_DAC_ConvertData12RightAligned(DAC3, LL_DAC_CHANNEL_1, level);
+  LL_DAC_TrigSWConversion(DAC3, LL_DAC_CHANNEL_1);
 }
 
 static void comp_detect() {
@@ -178,7 +178,6 @@ void COMP1_2_3_IRQHandler(void) {
     return;
   }
 
-  LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_10);
   LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_9);
 
   static uint32_t broad_counter = 0;
@@ -224,7 +223,6 @@ void COMP1_2_3_IRQHandler(void) {
     if ((now - sync_start) > TICKS(3, 100)) {
       if (line_counter >= LINE_MIN && line_counter < LINE_MAX) {
         osd_video_fire(line_counter - LINE_MIN);
-        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_10);
       }
 
       line_counter += 2;

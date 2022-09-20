@@ -36,7 +36,13 @@ void osd_init() {
   osd_video_init();
 
   screen_clear();
-  screen_write(10, 10, "QUICKSILVER");
+
+  for (uint8_t row = 0; row < 4; row++) {
+    uint8_t start = 160 + row * 24;
+    for (uint8_t i = 0; i < 24; i++) {
+      screen_buffer[(row)*SCREEN_BUFFER_WIDTH + i + 3] = start + i;
+    }
+  }
 }
 
 void osd_update() {
